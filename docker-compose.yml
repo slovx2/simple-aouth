@@ -1,0 +1,23 @@
+services:
+  simple-oauth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simple-oauth:latest
+    container_name: simple-oauth
+    ports:
+      - "5001:5001"
+    environment:
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - PORT=${PORT:-5001}
+      - REDIRECT_URI=${REDIRECT_URI:-http://localhost:5001/callback}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
