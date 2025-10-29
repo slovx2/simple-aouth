@@ -16,11 +16,13 @@ FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
 PORT = int(os.getenv("PORT", "5001"))
 REDIRECT_URI = os.getenv("REDIRECT_URI", f"http://localhost:{PORT}/callback")
+FACEBOOK_SCOPE = os.getenv("FACEBOOK_SCOPE", "ads_read,ads_management")
 
 # Facebook OAuth URLs
 FACEBOOK_API_VERSION = "v21.0"
 FACEBOOK_OAUTH_URL = f"https://www.facebook.com/{FACEBOOK_API_VERSION}/dialog/oauth"
 FACEBOOK_TOKEN_URL = f"https://graph.facebook.com/{FACEBOOK_API_VERSION}/oauth/access_token"
+FACEBOOK_GRAPH_API_URL = f"https://graph.facebook.com/{FACEBOOK_API_VERSION}/me"
 
 
 @app.route("/")
@@ -33,7 +35,7 @@ def index() -> str:
         f"{FACEBOOK_OAUTH_URL}?"
         f"client_id={FACEBOOK_APP_ID}&"
         f"redirect_uri={REDIRECT_URI}&"
-        f"scope=email,public_profile&"
+        f"scope={FACEBOOK_SCOPE}&"
         f"response_type=code"
     )
 
@@ -119,6 +121,32 @@ def callback() -> tuple[str, int] | str:
 
         access_token = long_token_data.get("access_token", short_lived_token)
 
+        # 3. 获取用户信息
+        user_id = "未获取"
+        user_name = "未获取"
+        try:
+            user_info_params = {
+                "fields": "id,name",
+                "access_token": access_token,
+            }
+            user_info_response = requests.get(FACEBOOK_GRAPH_API_URL, params=user_info_params)
+            user_info_response.raise_for_status()
+            user_info = user_info_response.json()
+
+            user_id = user_info.get("id", "未获取")
+            user_name = user_info.get("name", "未获取")
+
+            # 在控制台打印信息
+            print("\n" + "="*50)
+            print("Facebook OAuth 授权成功")
+            print("="*50)
+            print(f"Access Token: {access_token}")
+            print(f"User ID: {user_id}")
+            print(f"User Name: {user_name}")
+            print("="*50 + "\n")
+        except requests.RequestException as e:
+            print(f"警告: 获取用户信息失败: {str(e)}")
+
         return f"""
         <!DOCTYPE html>
         <html>
@@ -184,13 +212,51 @@ def callback() -> tuple[str, int] | str:
                     font-size: 48px;
                     margin-bottom: 10px;
                 }}
+                .user-info {{
+                    margin: 20px 0;
+                }}
+                .user-name {{
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #333;
+                    margin-bottom: 5px;
+                }}
+                .user-id {{
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 20px;
+                }}
+                .warning-box {{
+                    background-color: #fff3cd;
+                    border: 1px solid #ffc107;
+                    border-radius: 6px;
+                    padding: 15px;
+                    margin: 20px 0;
+                    color: #856404;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }}
+                .warning-icon {{
+                    font-size: 20px;
+                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="success-icon">✓</div>
-                <h1>Access Token</h1>
+                <h1>授权成功</h1>
+                <div class="user-info">
+                    <div class="user-name">{user_name}</div>
+                    <div class="user-id">用户 ID: {user_id}</div>
+                </div>
+                <h2 style="color: #333; margin-top: 30px; margin-bottom: 10px;">Access Token</h2>
                 <div class="token-box" id="token">{access_token}</div>
+                <div class="warning-box">
+                    <span class="warning-icon">⚠️</span>
+                    <span>请自行保管 access token，本应用不保存</span>
+                </div>
                 <button onclick="copyToken()">复制 Token</button>
             </div>
 
@@ -212,6 +278,7 @@ def callback() -> tuple[str, int] | str:
 
 def main() -> None:
     """启动 Flask 应用"""
+    # 测试缓存效果 - 修改源码不影响依赖层缓存
     if not FACEBOOK_APP_ID or not FACEBOOK_APP_SECRET:
         print("错误: 请先配置 FACEBOOK_APP_ID 和 FACEBOOK_APP_SECRET 环境变量")
         print("请复制 .env.example 为 .env 并填入你的 Facebook 应用凭据")

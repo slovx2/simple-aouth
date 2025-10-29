@@ -1,27 +1,38 @@
-# 多阶段构建，使用 alpine 基础镜像以最小化体积
+# Stage 1: 构建阶段 - 使用 uv 安装依赖和构建项目
+FROM ghcr.io/astral-sh/uv:latest AS uv-installer
+
 FROM python:3.12-alpine AS builder
 
 WORKDIR /app
 
+# 使用阿里云镜像源加速（解决网络和SSL问题）
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
 # 安装构建依赖
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
-# 安装 uv（仅用于构建阶段）
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# 从 uv-installer 复制 uv 工具
+COPY --from=uv-installer /uv /usr/local/bin/uv
 
-# 复制项目文件
-COPY pyproject.toml uv.lock README.md ./
+# 复制依赖配置文件（源码变化不会使此层缓存失效）
+COPY pyproject.toml uv.lock ./
+
+# 只安装依赖，不安装项目本身
+RUN uv sync --frozen --no-dev --no-install-project
+
+# 复制 README 和源码
+COPY README.md ./
 COPY src/ ./src/
 
-# 安装依赖到 /app/.venv
-RUN uv sync --frozen --no-dev --no-cache
+# 安装项目本身
+RUN uv sync --frozen --no-dev
 
-# 最终镜像 - 使用 alpine 减小体积
+# Stage 2: 运行时镜像
 FROM python:3.12-alpine
 
 WORKDIR /app
 
-# 安装运行时依赖
+# 安装运行时依赖并创建用户
 RUN apk add --no-cache libffi && \
     adduser -D -u 1000 appuser && \
     chown -R appuser:appuser /app

@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     image: simple-oauth:latest
     container_name: simple-oauth
-    ports:
-      - "5001:5001"
+    network_mode: host
     environment:
       - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
       - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
       - PORT=${PORT:-5001}
       - REDIRECT_URI=${REDIRECT_URI:-http://localhost:5001/callback}
+      - FACEBOOK_SCOPE=${FACEBOOK_SCOPE:-ads_read,ads_management}
     env_file:
       - .env
     restart: unless-stopped
