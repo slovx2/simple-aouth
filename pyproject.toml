@@ -1,7 +1,7 @@
 [project]
 name = "fb-oauth"
 version = "0.1.0"
-description = "Simple Facebook OAuth application"
+description = "Simple multi-provider OAuth application"
 readme = "README.md"
 authors = [
     { name = "song", email = "slovx2@gmail.com" }

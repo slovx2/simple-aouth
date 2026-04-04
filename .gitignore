@@ -19,6 +19,8 @@ venv/
 *.swp
 *.swo
 *~
+AGENTS.md
+cloudflared.dev.yml
 
 # OS files
 .DS_Store
