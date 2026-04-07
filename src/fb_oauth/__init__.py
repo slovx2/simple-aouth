@@ -48,6 +48,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 
 PORT = int(os.getenv("PORT", "5001"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
+OAUTH_DEBUG = os.getenv("OAUTH_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
 # Facebook OAuth 配置
 FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
@@ -986,6 +987,11 @@ def index() -> str:
     return render_home_page(get_provider_cards())
 
 
+@app.route("/healthz")
+def healthz() -> tuple[str, int]:
+    return "ok", 200
+
+
 @app.route("/amazon-ads/select-region")
 def amazon_ads_select_region() -> str:
     if not AMAZON_AD_CLIENT_ID or not AMAZON_AD_CLIENT_SECRET:
@@ -1238,4 +1244,10 @@ def main() -> None:
         print(f"TikTok 回调地址: {TIKTOK_REDIRECT_URI}")
     if AMAZON_AD_CLIENT_ID and AMAZON_AD_CLIENT_SECRET:
         print(f"Amazon Ads 回调地址: {AMAZON_AD_REDIRECT_URI}")
-    app.run(debug=True, host="0.0.0.0", port=PORT)
+    print(f"Debug 模式: {'开启' if OAUTH_DEBUG else '关闭'}")
+    app.run(
+        debug=OAUTH_DEBUG,
+        use_reloader=OAUTH_DEBUG,
+        host="0.0.0.0",
+        port=PORT,
+    )
