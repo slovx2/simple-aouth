@@ -54,5 +54,5 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # 暴露端口
 EXPOSE 5001
 
-# 启动应用
-CMD ["python", "-m", "fb_oauth"]
+# 生产环境使用 gunicorn 托管 Flask 应用
+CMD ["sh", "-c", "exec gunicorn --workers ${GUNICORN_WORKERS:-1} --worker-class gthread --threads ${GUNICORN_THREADS:-4} --bind 0.0.0.0:${PORT:-5001} --timeout ${GUNICORN_TIMEOUT:-60} fb_oauth:app"]
