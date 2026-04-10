@@ -43,6 +43,21 @@ class AmazonAdsCountry:
     auth_url: str
 
 
+@dataclass(frozen=True)
+class AmazonSpRegion:
+    key: str
+    label: str
+    endpoint: str
+
+
+@dataclass(frozen=True)
+class AmazonSpCountry:
+    code: str
+    label: str
+    region_key: str
+    seller_central_url: str
+
+
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 
@@ -106,6 +121,45 @@ AMAZON_AD_COUNTRIES: tuple[AmazonAdsCountry, ...] = (
     AmazonAdsCountry("AU", "澳大利亚", "FE", "https://apac.account.amazon.com/ap/oa"),
 )
 
+# Amazon SP-API OAuth 配置
+AMAZON_SP_CLIENT_ID = os.getenv("AMAZON_SP_CLIENT_ID")
+AMAZON_SP_CLIENT_SECRET = os.getenv("AMAZON_SP_CLIENT_SECRET")
+AMAZON_SP_APP_ID = os.getenv("AMAZON_SP_APP_ID")
+AMAZON_SP_REDIRECT_URI = os.getenv(
+    "AMAZON_SP_REDIRECT_URI",
+    f"http://localhost:{PORT}/amazon-sp/callback",
+)
+AMAZON_SP_TOKEN_URL = os.getenv("AMAZON_SP_TOKEN_URL", "https://api.amazon.com/auth/o2/token")
+AMAZON_SP_AUTH_PATH = "/apps/authorize/consent"
+AMAZON_SP_REGIONS: tuple[AmazonSpRegion, ...] = (
+    AmazonSpRegion("NA", "北美", "https://sellingpartnerapi-na.amazon.com"),
+    AmazonSpRegion("EU", "欧洲", "https://sellingpartnerapi-eu.amazon.com"),
+    AmazonSpRegion("SG", "新加坡", "https://sellingpartnerapi-fe.amazon.com"),
+    AmazonSpRegion("JP", "日本", "https://sellingpartnerapi-fe.amazon.com"),
+    AmazonSpRegion("AU", "澳大利亚", "https://sellingpartnerapi-fe.amazon.com"),
+)
+AMAZON_SP_COUNTRIES: tuple[AmazonSpCountry, ...] = (
+    AmazonSpCountry("US", "美国", "NA", "https://sellercentral.amazon.com"),
+    AmazonSpCountry("CA", "加拿大", "NA", "https://sellercentral.amazon.ca"),
+    AmazonSpCountry("MX", "墨西哥", "NA", "https://sellercentral.amazon.com.mx"),
+    AmazonSpCountry("BR", "巴西", "NA", "https://sellercentral.amazon.com.br"),
+    AmazonSpCountry("GB", "英国", "EU", "https://sellercentral-europe.amazon.com"),
+    AmazonSpCountry("DE", "德国", "EU", "https://sellercentral-europe.amazon.com"),
+    AmazonSpCountry("ES", "西班牙", "EU", "https://sellercentral-europe.amazon.com"),
+    AmazonSpCountry("FR", "法国", "EU", "https://sellercentral-europe.amazon.com"),
+    AmazonSpCountry("IT", "意大利", "EU", "https://sellercentral-europe.amazon.com"),
+    AmazonSpCountry("NL", "荷兰", "EU", "https://sellercentral.amazon.nl"),
+    AmazonSpCountry("TR", "土耳其", "EU", "https://sellercentral.amazon.com.tr"),
+    AmazonSpCountry("AE", "阿联酋", "EU", "https://sellercentral.amazon.ae"),
+    AmazonSpCountry("SA", "沙特阿拉伯", "EU", "https://sellercentral.amazon.sa"),
+    AmazonSpCountry("IN", "印度", "EU", "https://sellercentral.amazon.in"),
+    AmazonSpCountry("PL", "波兰", "EU", "https://sellercentral.amazon.pl"),
+    AmazonSpCountry("SE", "瑞典", "EU", "https://sellercentral.amazon.se"),
+    AmazonSpCountry("SG", "新加坡", "SG", "https://sellercentral.amazon.sg"),
+    AmazonSpCountry("JP", "日本", "JP", "https://sellercentral.amazon.co.jp"),
+    AmazonSpCountry("AU", "澳大利亚", "AU", "https://sellercentral.amazon.com.au"),
+)
+
 STATE_SESSION_PREFIX = "oauth_state:"
 STATE_CONTEXT_SESSION_PREFIX = "oauth_state_context:"
 
@@ -144,6 +198,25 @@ def get_amazon_country(country_code: str) -> AmazonAdsCountry | None:
 
 def get_amazon_countries_by_region(region_key: str) -> list[AmazonAdsCountry]:
     return [country for country in AMAZON_AD_COUNTRIES if country.region_key == region_key]
+
+
+def get_amazon_sp_region(region_key: str) -> AmazonSpRegion | None:
+    for region in AMAZON_SP_REGIONS:
+        if region.key == region_key:
+            return region
+    return None
+
+
+def get_amazon_sp_country(country_code: str) -> AmazonSpCountry | None:
+    upper_code = country_code.upper()
+    for country in AMAZON_SP_COUNTRIES:
+        if country.code == upper_code:
+            return country
+    return None
+
+
+def get_amazon_sp_countries_by_region(region_key: str) -> list[AmazonSpCountry]:
+    return [country for country in AMAZON_SP_COUNTRIES if country.region_key == region_key]
 
 
 def create_state(provider_key: str, context: dict[str, Any] | None = None) -> str:
@@ -559,9 +632,11 @@ def render_home_page(cards: list[ProviderCard]) -> str:
         </div>
         <div class="cards">{cards_html}</div>
         <div class="note">
-            Amazon 这里接入的是 <strong>Amazon Ads API</strong> 授权链路，用来拉广告数据、管理广告。
+            Amazon 这里同时接入了 <strong>Amazon Ads API</strong> 和 <strong>SP-API</strong> 两条授权链路。
             <br>
-            它不是 SP-API。SP-API 用于店铺、订单、商品等卖家数据，虽然也基于 Login with Amazon，但调用头和目标接口都不一样。
+            Ads API 用来拉广告数据、管理广告。SP-API 用于店铺、订单、商品等卖家数据。
+            <br>
+            两者虽然都基于 Login with Amazon，但授权入口、回调参数和后续调用方式都不一样。
         </div>
     </div>
     """
@@ -630,6 +705,70 @@ def render_amazon_country_page(region: AmazonAdsRegion, countries: list[AmazonAd
     </div>
     """
     return render_page("Amazon Ads 选择国家", body_html)
+
+
+def render_amazon_sp_region_page() -> str:
+    region_cards: list[str] = []
+    for region in AMAZON_SP_REGIONS:
+        countries = get_amazon_sp_countries_by_region(region.key)
+        country_labels = "、".join(country.label for country in countries)
+        region_cards.append(
+            f"""
+            <div class="card">
+                <div class="card-top">
+                    <div class="card-accent" style="background:#232f3e;"></div>
+                    <h2>{html_escape(region.label)}</h2>
+                    <p>{html_escape(country_labels)}</p>
+                </div>
+                <div class="button-row">
+                    <a href="/amazon-sp/select-country/{html_escape(region.key)}" class="btn btn-primary" style="background:#232f3e;">选择国家</a>
+                </div>
+            </div>
+            """
+        )
+
+    body_html = f"""
+    <div class="panel">
+        <div class="hero">
+            <h1>Amazon SP-API 选择地区</h1>
+            <p>先选地区和国家，再跳到对应 Seller Central 授权页。授权完成后，页面会展示 token 和 selling_partner_id。</p>
+        </div>
+        <div class="cards">{"".join(region_cards)}</div>
+        <a class="back-link" href="/">返回首页</a>
+    </div>
+    """
+    return render_page("Amazon SP-API 选择地区", body_html)
+
+
+def render_amazon_sp_country_page(region: AmazonSpRegion, countries: list[AmazonSpCountry]) -> str:
+    country_cards: list[str] = []
+    for country in countries:
+        country_cards.append(
+            f"""
+            <div class="card">
+                <div class="card-top">
+                    <div class="card-accent" style="background:#232f3e;"></div>
+                    <h2>{html_escape(country.label)}</h2>
+                    <p>{html_escape(country.code)} / {html_escape(region.label)}</p>
+                </div>
+                <div class="button-row">
+                    <a href="/amazon-sp/start/{html_escape(country.code)}" class="btn btn-primary" style="background:#232f3e;">开始授权</a>
+                </div>
+            </div>
+            """
+        )
+
+    body_html = f"""
+    <div class="panel">
+        <div class="hero">
+            <h1>Amazon SP-API 选择国家</h1>
+            <p>当前地区：{html_escape(region.label)}。请选择要授权的 Seller Central 站点。</p>
+        </div>
+        <div class="cards">{"".join(country_cards)}</div>
+        <a class="back-link" href="/amazon-sp/select-region">返回地区选择</a>
+    </div>
+    """
+    return render_page("Amazon SP-API 选择国家", body_html)
 
 
 def render_message_page(title: str, message: str, *, back_url: str = "/") -> str:
@@ -852,10 +991,84 @@ def render_amazon_success_page(
     return render_page("Amazon Ads 授权成功", body_html)
 
 
+def build_amazon_sp_bundle(
+    token_data: dict[str, Any],
+    selected_country: AmazonSpCountry | None,
+    selling_partner_id: str,
+) -> dict[str, Any]:
+    region = get_amazon_sp_region(selected_country.region_key) if selected_country else None
+    return {
+        "provider": "amazon_sp",
+        "access_token": token_data.get("access_token"),
+        "refresh_token": token_data.get("refresh_token"),
+        "token_type": token_data.get("token_type"),
+        "expires_in": token_data.get("expires_in"),
+        "selling_partner_id": selling_partner_id,
+        "country_code": selected_country.code if selected_country else None,
+        "country_label": selected_country.label if selected_country else None,
+        "region": selected_country.region_key if selected_country else None,
+        "sp_api_endpoint": region.endpoint if region else None,
+        "call_headers_template": {
+            "x-amz-access-token": "<access_token>",
+        },
+    }
+
+
+def render_amazon_sp_success_page(
+    token_data: dict[str, Any],
+    selected_country: AmazonSpCountry | None,
+    selling_partner_id: str,
+) -> str:
+    bundle = build_amazon_sp_bundle(token_data, selected_country, selling_partner_id)
+    region = get_amazon_sp_region(selected_country.region_key) if selected_country else None
+    summary_items = [
+        ("Token 类型", str(token_data.get("token_type", "未返回"))),
+        ("Access Token 有效期", f'{token_data.get("expires_in", "未返回")} 秒'),
+        ("Selling Partner ID", selling_partner_id or "未返回"),
+    ]
+    if selected_country:
+        summary_items.insert(0, ("授权国家", f"{selected_country.label} ({selected_country.code})"))
+        summary_items.insert(1, ("授权地区", selected_country.region_key))
+    if region:
+        summary_items.append(("SP-API Endpoint", region.endpoint))
+
+    body_html = f"""
+    <div class="panel">
+        <div class="success-mark">✓</div>
+        <div class="hero">
+            <h1>Amazon SP-API 授权成功</h1>
+            <p>这里返回的是 SP-API 可继续换取 access token 的 Login with Amazon 凭据，主要给卖家、订单、商品、库存这类接口使用。</p>
+        </div>
+        {render_key_value_grid(summary_items)}
+        <div class="note">
+            SP-API 常见用法是把 <code>refresh_token</code> 交给后端，后端再去刷新短期 <code>access_token</code>。
+            <br>
+            真正调用 SP-API 时，除了 <code>x-amz-access-token</code>，通常还需要 AWS SigV4 签名，这一点和 Amazon Ads API 不一样。
+        </div>
+        <div class="section">
+            <h2>Token</h2>
+            {render_copy_block("Access Token", "amazon-sp-access-token", str(token_data.get("access_token", "")))}
+            {render_copy_block("Refresh Token", "amazon-sp-refresh-token", str(token_data.get("refresh_token", "")))}
+        </div>
+        <div class="section">
+            <h2>卖家标识</h2>
+            {render_copy_block("Selling Partner ID", "amazon-sp-selling-partner-id", selling_partner_id)}
+        </div>
+        <div class="section">
+            <h2>可复制 JSON 包</h2>
+            <div class="muted">如果你想把这次授权结果直接交给后端服务，复制这一段通常最方便。</div>
+            {render_copy_block("Amazon SP JSON", "amazon-sp-bundle-json", pretty_json(bundle))}
+        </div>
+    </div>
+    """
+    return render_page("Amazon SP-API 授权成功", body_html)
+
+
 def get_provider_cards() -> list[ProviderCard]:
     facebook_enabled = bool(FACEBOOK_APP_ID and FACEBOOK_APP_SECRET)
     tiktok_enabled = bool(TIKTOK_APP_ID and TIKTOK_APP_SECRET)
-    amazon_enabled = bool(AMAZON_AD_CLIENT_ID and AMAZON_AD_CLIENT_SECRET)
+    amazon_ads_enabled = bool(AMAZON_AD_CLIENT_ID and AMAZON_AD_CLIENT_SECRET)
+    amazon_sp_enabled = bool(AMAZON_SP_CLIENT_ID and AMAZON_SP_CLIENT_SECRET and AMAZON_SP_APP_ID)
 
     facebook_auth_url = "#"
     if facebook_enabled:
@@ -881,9 +1094,13 @@ def get_provider_cards() -> list[ProviderCard]:
             },
         )
 
-    amazon_auth_url = "#"
-    if amazon_enabled:
-        amazon_auth_url = "/amazon-ads/select-region"
+    amazon_ads_auth_url = "#"
+    if amazon_ads_enabled:
+        amazon_ads_auth_url = "/amazon-ads/select-region"
+
+    amazon_sp_auth_url = "#"
+    if amazon_sp_enabled:
+        amazon_sp_auth_url = "/amazon-sp/select-region"
 
     return [
         ProviderCard(
@@ -913,9 +1130,19 @@ def get_provider_cards() -> list[ProviderCard]:
             description="Login with Amazon 授权，用于 Amazon 广告 API，不是 SP-API。",
             accent_color="#ff9900",
             action_text="开始授权",
-            auth_url=amazon_auth_url,
-            enabled=amazon_enabled,
+            auth_url=amazon_ads_auth_url,
+            enabled=amazon_ads_enabled,
             disabled_reason="请先配置 AMAZON_AD_CLIENT_ID 和 AMAZON_AD_CLIENT_SECRET。",
+        ),
+        ProviderCard(
+            key="amazon_sp",
+            title="Amazon SP-API",
+            description="Seller Central 授权，用于订单、商品、库存等卖家接口，不是广告 API。",
+            accent_color="#232f3e",
+            action_text="开始授权",
+            auth_url=amazon_sp_auth_url,
+            enabled=amazon_sp_enabled,
+            disabled_reason="请先配置 AMAZON_SP_CLIENT_ID、AMAZON_SP_CLIENT_SECRET 和 AMAZON_SP_APP_ID。",
         ),
     ]
 
@@ -928,6 +1155,8 @@ def get_enabled_provider_names() -> list[str]:
         enabled_names.append("TikTok")
     if AMAZON_AD_CLIENT_ID and AMAZON_AD_CLIENT_SECRET:
         enabled_names.append("Amazon Ads")
+    if AMAZON_SP_CLIENT_ID and AMAZON_SP_CLIENT_SECRET and AMAZON_SP_APP_ID:
+        enabled_names.append("Amazon SP-API")
     return enabled_names
 
 
@@ -967,6 +1196,16 @@ def exchange_amazon_ads_token(code: str) -> dict[str, Any]:
         "redirect_uri": AMAZON_AD_REDIRECT_URI,
     }
     return request_json("POST", AMAZON_AD_TOKEN_URL, data=payload)
+
+
+def exchange_amazon_sp_token(code: str) -> dict[str, Any]:
+    payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": AMAZON_SP_CLIENT_ID,
+        "client_secret": AMAZON_SP_CLIENT_SECRET,
+    }
+    return request_json("POST", AMAZON_SP_TOKEN_URL, data=payload)
 
 
 def get_amazon_ads_profiles(access_token: str, region: AmazonAdsRegion) -> list[dict[str, Any]]:
@@ -1029,6 +1268,53 @@ def amazon_ads_start(country_code: str):
             "state": state,
             "client_id": AMAZON_AD_CLIENT_ID,
             "redirect_uri": AMAZON_AD_REDIRECT_URI,
+        },
+    )
+    return redirect(auth_url)
+
+
+@app.route("/amazon-sp/select-region")
+def amazon_sp_select_region() -> str:
+    if not AMAZON_SP_CLIENT_ID or not AMAZON_SP_CLIENT_SECRET or not AMAZON_SP_APP_ID:
+        return render_message_page(
+            "Amazon SP-API 未配置",
+            "请先配置 AMAZON_SP_CLIENT_ID、AMAZON_SP_CLIENT_SECRET 和 AMAZON_SP_APP_ID。",
+        )
+    return render_amazon_sp_region_page()
+
+
+@app.route("/amazon-sp/select-country/<region_key>")
+def amazon_sp_select_country(region_key: str) -> str:
+    region = get_amazon_sp_region(region_key.upper())
+    if not region:
+        return render_message_page("地区不存在", f"未找到地区: {region_key}")
+    countries = get_amazon_sp_countries_by_region(region.key)
+    return render_amazon_sp_country_page(region, countries)
+
+
+@app.route("/amazon-sp/start/<country_code>")
+def amazon_sp_start(country_code: str):
+    if not AMAZON_SP_CLIENT_ID or not AMAZON_SP_CLIENT_SECRET or not AMAZON_SP_APP_ID:
+        return render_message_page(
+            "Amazon SP-API 未配置",
+            "请先配置 AMAZON_SP_CLIENT_ID、AMAZON_SP_CLIENT_SECRET 和 AMAZON_SP_APP_ID。",
+        )
+
+    country = get_amazon_sp_country(country_code)
+    if not country:
+        return render_message_page("国家不存在", f"未找到国家: {country_code}", back_url="/amazon-sp/select-region")
+
+    state = create_state(
+        "amazon_sp",
+        context={"country_code": country.code, "region_key": country.region_key},
+    )
+    auth_url = build_url(
+        f"{country.seller_central_url}{AMAZON_SP_AUTH_PATH}",
+        {
+            "application_id": AMAZON_SP_APP_ID,
+            "state": state,
+            "client_id": AMAZON_SP_CLIENT_ID,
+            "redirect_uri": AMAZON_SP_REDIRECT_URI,
         },
     )
     return redirect(auth_url)
@@ -1173,6 +1459,38 @@ def amazon_ads_callback() -> tuple[str, int] | str:
         return f"请求失败: {exc}", 500
 
 
+@app.route("/amazon-sp/callback")
+def amazon_sp_callback() -> tuple[str, int] | str:
+    error = request.args.get("error")
+    if error:
+        error_description = request.args.get("error_description", "未知错误")
+        return f"授权失败: {error} - {error_description}", 400
+
+    code = request.args.get("spapi_oauth_code")
+    state = request.args.get("state")
+    selling_partner_id = request.args.get("selling_partner_id", "").strip()
+    if not code:
+        return "缺少 spapi_oauth_code", 400
+    is_valid_state, state_context = consume_state("amazon_sp", state)
+    if not is_valid_state:
+        return "State 验证失败", 400
+
+    try:
+        token_data = exchange_amazon_sp_token(code)
+        access_token = str(token_data.get("access_token", ""))
+        if not access_token:
+            return "获取 Amazon SP-API access token 失败", 500
+
+        print(f"[Amazon SP] 授权成功 selling_partner_id={selling_partner_id or 'unknown'}")
+        selected_country = None
+        country_code = str(state_context.get("country_code", "")).upper()
+        if country_code:
+            selected_country = get_amazon_sp_country(country_code)
+        return render_amazon_sp_success_page(token_data, selected_country, selling_partner_id)
+    except requests.RequestException as exc:
+        return f"请求失败: {exc}", 500
+
+
 @app.route("/tiktok/manual", methods=["GET", "POST"])
 def tiktok_manual() -> tuple[str, int] | str:
     if not TIKTOK_APP_ID or not TIKTOK_APP_SECRET:
@@ -1244,6 +1562,8 @@ def main() -> None:
         print(f"TikTok 回调地址: {TIKTOK_REDIRECT_URI}")
     if AMAZON_AD_CLIENT_ID and AMAZON_AD_CLIENT_SECRET:
         print(f"Amazon Ads 回调地址: {AMAZON_AD_REDIRECT_URI}")
+    if AMAZON_SP_CLIENT_ID and AMAZON_SP_CLIENT_SECRET and AMAZON_SP_APP_ID:
+        print(f"Amazon SP-API 回调地址: {AMAZON_SP_REDIRECT_URI}")
     print(f"Debug 模式: {'开启' if OAUTH_DEBUG else '关闭'}")
     app.run(
         debug=OAUTH_DEBUG,
